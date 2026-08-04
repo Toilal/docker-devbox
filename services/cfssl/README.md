@@ -15,6 +15,37 @@ Installation
 docker compose up --build
 ```
 
+Validity periods
+----------------
+
+Certificates are issued for a long time, as they only ever serve local development:
+
+| Certificate | Configured in | Validity |
+| --- | --- | --- |
+| Root CA | `.docker/cfssl/etc/csr_root_ca.json` | 23 years |
+| Intermediate CA | `.docker/cfssl/etc/csr_intermediate_ca.json` | 23 years |
+| Project certificate | `.docker/cfssl/etc/ca_intermediate_config.json` | 20 years |
+
+They are kept below a quarter of a century so that, for the time being, expiry dates stay under 2050 and are therefore
+encoded as `UTCTime` rather than `GeneralizedTime`
+([RFC 5280 4.1.2.5](https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.5)). That is the convention public
+certificate authorities follow, and nothing more: since the durations are relative to the issuance date, an installation
+made after 2027 crosses 2050 anyway, and current TLS stacks read `GeneralizedTime` just fine.
+
+Changing these values only affects certificates issued afterwards. `ddb configure` regenerates a project certificate
+when it is missing, never when it expired or when the configuration changed, and the certificate authority itself lives
+in a docker volume. To reissue everything with new durations:
+
+```
+cd ~/.docker-devbox/cfssl
+docker compose down -v          # drops the certificate authority volumes
+docker compose up --build -d
+rm -rf ~/.docker-devbox/certs/* ~/.docker-devbox/traefik/config/*.ssl.toml
+```
+
+Then, in each project, remove the `.certs` directory and run `ddb configure` again. The new root certificate has to be
+installed in the client trust store, as described in the docker-devbox README.
+
 Generate a wildcard certificate for a domain name
 --------------------------------------------------
 - From server shell
