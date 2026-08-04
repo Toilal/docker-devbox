@@ -301,6 +301,15 @@ jobs:
 
           openssl x509 -in ".certs/$DOMAIN.crt" -noout -subject -issuer -dates
 
+      - name: Check the certificate validity period
+        run: |
+          config="$GITHUB_WORKSPACE/services/cfssl/.docker/cfssl/etc/ca_intermediate_config.json"
+          hours="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['signing']['default']['expiry'].rstrip('h'))" "$config")"
+
+          # the certificate must be issued for the configured duration, minus the time already elapsed
+          openssl x509 -in "$PROJECT/.certs/$DOMAIN.crt" -noout -checkend "$(( hours * 3600 * 99 / 100 ))"
+          echo "certificate is valid for the configured $hours hours"
+
       - name: Check the certificate is installed in traefik
         run: |
           test -f "$HOME/.docker-devbox/certs/$DOMAIN.crt"
