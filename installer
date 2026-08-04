@@ -121,6 +121,56 @@ _fetch_sources() {
   DOCKER_DEVBOX_SOURCES="$DOCKER_DEVBOX_SRC"
 }
 
+# ddb self-update reads the repository from core.github_repository, keep it aligned with the installed binary.
+_configure_ddb_repository() {
+  local CONFIG="${DOCKER_DEVBOX_HOME}/ddb.yml"
+
+  if [[ -e "${DOCKER_DEVBOX_HOME}/ddb.yaml" ]]; then
+    CONFIG="${DOCKER_DEVBOX_HOME}/ddb.yaml"
+  fi
+
+  if [[ ! -e "$CONFIG" ]]; then
+    if [[ "$DOCKER_DEVBOX_DDB_REPOSITORY" == "$_DDB_DEFAULT_REPOSITORY" ]]; then
+      return 0
+    fi
+
+    echo "Configure ddb to self-update from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
+    cat << EOF > "$CONFIG"
+core:
+  github_repository: $DOCKER_DEVBOX_DDB_REPOSITORY
+EOF
+    return 0
+  fi
+
+  if awk -v repository="$DOCKER_DEVBOX_DDB_REPOSITORY" '
+    BEGIN { in_core = 0; inline_core = 0; done = 0 }
+    !done && /^core:[ \t]*$/ { in_core = 1; print; next }
+    !done && /^core:[ \t]*[^ \t]/ { inline_core = 1; print; next }
+    in_core && /^[ \t]+github_repository:[ \t]*/ {
+      match($0, /^[ \t]+/)
+      print substr($0, 1, RLENGTH) "github_repository: " repository
+      in_core = 0; done = 1; next
+    }
+    in_core && /^[^ \t]/ { print "  github_repository: " repository; in_core = 0; done = 1 }
+    { print }
+    END {
+      if (in_core) { print "  github_repository: " repository; done = 1 }
+      if (!done && !inline_core) { print "core:"; print "  github_repository: " repository; done = 1 }
+      if (!done) { exit 2 }
+    }
+  ' "$CONFIG" > "$CONFIG.tmp"; then
+    if ! cmp -s "$CONFIG" "$CONFIG.tmp"; then
+      echo "Configure ddb to self-update from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
+      mv "$CONFIG.tmp" "$CONFIG"
+    else
+      rm -f "$CONFIG.tmp"
+    fi
+  else
+    rm -f "$CONFIG.tmp"
+    echo "Set core.github_repository to ${DOCKER_DEVBOX_DDB_REPOSITORY} in $CONFIG for ddb self-update to use the same repository." 2>&1 | tee -a "$_LOG"
+  fi
+}
+
 _uninstall_service() {
   local SERVICE="$1"
   local TARGET="$DOCKER_DEVBOX_HOME/$SERVICE"
@@ -215,23 +265,7 @@ fi
 curl -fsSL -o "$DOCKER_DEVBOX_BIN/ddb" $DOCKER_DEVBOX_BIN_URL
 chmod +x "$DOCKER_DEVBOX_BIN/ddb"
 
-# ddb self-update reads the repository from its own configuration, keep it aligned with the installed binary.
-if [[ "$DOCKER_DEVBOX_DDB_REPOSITORY" != "$_DDB_DEFAULT_REPOSITORY" ]]; then
-  _DDB_CONFIG="${DOCKER_DEVBOX_HOME}/ddb.yml"
-  if [[ -e "${DOCKER_DEVBOX_HOME}/ddb.yaml" ]]; then
-    _DDB_CONFIG="${DOCKER_DEVBOX_HOME}/ddb.yaml"
-  fi
-
-  if [[ ! -e "$_DDB_CONFIG" ]]; then
-    echo "Configure ddb to self-update from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
-    cat << EOF > "$_DDB_CONFIG"
-core:
-  github_repository: $DOCKER_DEVBOX_DDB_REPOSITORY
-EOF
-  elif ! grep -q "github_repository" "$_DDB_CONFIG"; then
-    echo "Set core.github_repository to ${DOCKER_DEVBOX_DDB_REPOSITORY} in $_DDB_CONFIG for ddb self-update to use the same repository." 2>&1 | tee -a "$_LOG"
-  fi
-fi
+_configure_ddb_repository
 
 if [[ -z "${DOCKER_DEVBOX_DISABLE_OPTIONAL_DEPENDENCIES}" ]]; then
     _MKCERT_VERSION=$(curl -fsSL $DOCKER_DEVBOX_CURL_OPTS_GITHUB_API https://api.github.com/repos/FiloSottile/mkcert/releases/latest | grep 'tag_name' | cut -d\" -f4)

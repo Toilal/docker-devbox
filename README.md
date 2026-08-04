@@ -205,9 +205,9 @@ Environment variables available for installer script:
 - Specific version installs:
   - `DOCKER_DEVBOX_DDB_VERSION`: Install a specific version of ddb (ex: `v2.0.1`). When unset, gets the latest version
   - `DOCKER_DEVBOX_DDB_REPOSITORY`: Github repository (`owner/name`) to download the ddb release from. Default is
-    `inetum-orleans/docker-devbox-ddb`. When set to another repository, `core.github_repository` is written to
-    `~/.docker-devbox/ddb.yml` so `ddb self-update` keeps using it. If that configuration file already exists, it is
-    left untouched and the setting has to be added manually.
+    `inetum-orleans/docker-devbox-ddb`. The installer keeps `core.github_repository` in `~/.docker-devbox/ddb.yml`
+    aligned with this value so `ddb self-update` uses the same repository, creating or updating that file as needed.
+    A `core` section written in flow style (`core: {...}`) can't be updated automatically and has to be edited manually.
   - `DOCKER_DEVBOX_SMARTCD_BRANCH`: Use a specific [smartcd (inetum fork)](https://github.com/inetum-orleans/smartcd) branch.
   - `DOCKER_DEVBOX_REPOSITORY`: Repository to retrieve services (traefik, cfssl, portainer) from. Default is
     `https://github.com/Toilal/docker-devbox.git`.
