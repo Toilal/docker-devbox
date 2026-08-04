@@ -17,7 +17,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check bash syntax
         run: |
@@ -32,7 +32,7 @@ jobs:
     name: ddb repository configuration
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check core.github_repository stays aligned
         run: |
@@ -100,7 +100,7 @@ jobs:
     env:
       DOCKER_DEVBOX_CURL_OPTS_GITHUB_API: -u x-access-token:${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup installation source
         run: |
@@ -159,7 +159,7 @@ jobs:
           test -f "$HOME/.docker-devbox/traefik/traefik.toml"
           test -f "$HOME/.docker-devbox/traefik/acme.json"
           test -d "$HOME/.docker-devbox/traefik/config"
-          test -x "$HOME/.docker-devbox/traefik/.bash_enter.d/80-chmod-acme-json"
+          test -f "$HOME/.docker-devbox/traefik/.bash_enter.d/80-chmod-acme-json"
 
       - name: Check services are running
         if: matrix.mode == 'full'
