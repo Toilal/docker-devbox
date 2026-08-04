@@ -228,6 +228,10 @@ Environment variables available for installer script:
   - `DOCKER_DEVBOX_CURL_OPTS_GITHUB_API`: Additional curl options to pass when accessing github api. You can set this
     variable to `-u <username:token>` using a Github Personnal Access Token if you encounter 403 errors due to rate
     limiting.
+  - `DOCKER_DEVBOX_RESET_VOLUMES`: Also remove the docker volumes of the services when reinstalling them, along with
+    `~/.docker-devbox/certs`. This issues a brand new certificate authority, which then has to be trusted again on the
+    clients, and makes every already generated project certificate useless. Without it, reinstalling keeps the
+    certificate authority and the portainer data.
   - `DOCKER_DEVBOX_SKIP_DOCKER_CHECKS`: Force installation even if `docker` binary is unavailable.
   - `DOCKER_DEVBOX_REVERSE_PROXY_NETWORK`: Name of the reverse proxy network. Default is `reverse-proxy`.
   - `DOCKER_DEVBOX_ALLOW_ROOT`: Allow the script to be run as root. This is not recommended.
