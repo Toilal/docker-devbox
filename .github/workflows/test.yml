@@ -401,9 +401,9 @@ jobs:
             exit 1
           fi
 
-      - name: Check DOCKER_DEVBOX_RESET_VOLUMES drops the authority and its certificates
+      - name: Check DOCKER_DEVBOX_RESET drops the authority and its certificates
         run: |
-          DOCKER_DEVBOX_RESET_VOLUMES=1 ./installer
+          DOCKER_DEVBOX_RESET=1 ./installer
 
           cd "$HOME/.docker-devbox/cfssl"
           current="$(docker compose exec -T intermediate cat /etc/cfssl/ca.pem \
@@ -412,7 +412,7 @@ jobs:
           echo "certificate authority: $current"
 
           if [[ "$current" == "$INITIAL_CA" ]]; then
-            echo "DOCKER_DEVBOX_RESET_VOLUMES must issue a new certificate authority"
+            echo "DOCKER_DEVBOX_RESET must issue a new certificate authority"
             exit 1
           fi
 
