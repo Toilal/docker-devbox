@@ -235,35 +235,52 @@ fi
 
 export PATH="$DOCKER_DEVBOX_BIN:$PATH"
 
-if [[ -n "${DOCKER_DEVBOX_DDB_VERSION}" ]]; then
-  echo "Downloading ddb version ${DOCKER_DEVBOX_DDB_VERSION} from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
-  DOCKER_DEVBOX_BIN_URL="https://github.com/${DOCKER_DEVBOX_DDB_REPOSITORY}/releases/download/${DOCKER_DEVBOX_DDB_VERSION}/${DOCKER_DEVBOX_DDB_ASSET_NAME}"
-else
-  echo "Downloading ddb latest release from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
-  DOCKER_DEVBOX_BIN_URL=$(curl -fsSL $DOCKER_DEVBOX_CURL_OPTS_GITHUB_API "https://api.github.com/repos/${DOCKER_DEVBOX_DDB_REPOSITORY}/releases/latest" \
-  | grep "browser_download_url.*/$DOCKER_DEVBOX_DDB_ASSET_NAME\"" \
-  | cut -d : -f 2,3 \
-  | tr -d \")
-
-  if [[ -z "${DOCKER_DEVBOX_BIN_URL}" ]]; then
-    # Github API may fail, most commonly because of unauthenticated rate limit.
-    # Use git to retrieve latest release tag and build url manually.
-    DOCKER_DEVBOX_LATEST_RELEASE=$(git -c 'versionsort.suffix=-' \
-        ls-remote --exit-code --refs --sort='version:refname' --tags "https://github.com/${DOCKER_DEVBOX_DDB_REPOSITORY}" 'v*.*.*' \
-        | tail --lines=1 \
-        | cut --delimiter='/' --fields=3)
-
-    if [[ -z "${DOCKER_DEVBOX_LATEST_RELEASE}" ]]; then
-        echo "Can't find ${DOCKER_DEVBOX_DDB_REPOSITORY} last release." 2>&1 | tee -a "$_LOG"
-        exit 1
-    fi
-
-    DOCKER_DEVBOX_BIN_URL="https://github.com/${DOCKER_DEVBOX_DDB_REPOSITORY}/releases/download/${DOCKER_DEVBOX_LATEST_RELEASE}/${DOCKER_DEVBOX_DDB_ASSET_NAME}"
+if [[ -n "${DOCKER_DEVBOX_DISABLE_DDB}" ]]; then
+  if [[ ! -x "$DOCKER_DEVBOX_BIN/ddb" ]] && [[ ! -x "$(command -v ddb)" ]]; then
+    echo "ddb download is disabled, but no ddb binary is available. Install one in $DOCKER_DEVBOX_BIN or unset DOCKER_DEVBOX_DISABLE_DDB." 2>&1 | tee -a "$_LOG"
+    exit 1
   fi
-fi
 
-curl -fsSL -o "$DOCKER_DEVBOX_BIN/ddb" $DOCKER_DEVBOX_BIN_URL
-chmod +x "$DOCKER_DEVBOX_BIN/ddb"
+  echo "ddb download is disabled, keeping $(command -v ddb)" 2>&1 |& tee -a "$_LOG"
+else
+  if [[ -n "${DOCKER_DEVBOX_DDB_URL}" ]]; then
+    echo "Downloading ddb from ${DOCKER_DEVBOX_DDB_URL}" 2>&1 |& tee -a "$_LOG"
+    DOCKER_DEVBOX_BIN_URL="${DOCKER_DEVBOX_DDB_URL}"
+  elif [[ -n "${DOCKER_DEVBOX_DDB_VERSION}" ]]; then
+    echo "Downloading ddb version ${DOCKER_DEVBOX_DDB_VERSION} from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
+    DOCKER_DEVBOX_BIN_URL="https://github.com/${DOCKER_DEVBOX_DDB_REPOSITORY}/releases/download/${DOCKER_DEVBOX_DDB_VERSION}/${DOCKER_DEVBOX_DDB_ASSET_NAME}"
+  else
+    echo "Downloading ddb latest release from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
+    DOCKER_DEVBOX_BIN_URL=$(curl -fsSL $DOCKER_DEVBOX_CURL_OPTS_GITHUB_API "https://api.github.com/repos/${DOCKER_DEVBOX_DDB_REPOSITORY}/releases/latest" \
+    | grep "browser_download_url.*/$DOCKER_DEVBOX_DDB_ASSET_NAME\"" \
+    | cut -d : -f 2,3 \
+    | tr -d ' "')
+
+    if [[ -z "${DOCKER_DEVBOX_BIN_URL}" ]]; then
+      # Github API may fail, most commonly because of unauthenticated rate limit.
+      # Use git to retrieve latest release tag and build url manually.
+      DOCKER_DEVBOX_LATEST_RELEASE=$(git -c 'versionsort.suffix=-' \
+          ls-remote --exit-code --refs --sort='version:refname' --tags "https://github.com/${DOCKER_DEVBOX_DDB_REPOSITORY}" 'v*.*.*' \
+          | tail --lines=1 \
+          | cut --delimiter='/' --fields=3)
+
+      if [[ -z "${DOCKER_DEVBOX_LATEST_RELEASE}" ]]; then
+          echo "Can't find ${DOCKER_DEVBOX_DDB_REPOSITORY} last release." 2>&1 | tee -a "$_LOG"
+          exit 1
+      fi
+
+      DOCKER_DEVBOX_BIN_URL="https://github.com/${DOCKER_DEVBOX_DDB_REPOSITORY}/releases/download/${DOCKER_DEVBOX_LATEST_RELEASE}/${DOCKER_DEVBOX_DDB_ASSET_NAME}"
+    fi
+  fi
+
+  if ! curl -fsSL -o "$DOCKER_DEVBOX_BIN/ddb" "$DOCKER_DEVBOX_BIN_URL"; then
+    rm -f "$DOCKER_DEVBOX_BIN/ddb"
+    echo "Can't download ddb from $DOCKER_DEVBOX_BIN_URL." 2>&1 | tee -a "$_LOG"
+    exit 1
+  fi
+
+  chmod +x "$DOCKER_DEVBOX_BIN/ddb"
+fi
 
 _configure_ddb_repository
 

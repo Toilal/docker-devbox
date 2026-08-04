@@ -198,12 +198,18 @@ Environment variables available for installer script:
   - `DOCKER_DEVBOX_DISABLE_PORTAINER`: Disable portainer.
   - `DOCKER_DEVBOX_DISABLE_REVERSE_PROXY`: Disable reverse-proxy feature (traefik).
   - `DOCKER_DEVBOX_DISABLE_OPTIONAL_DEPENDENCIES`: Disable the installation of mkcert.
+  - `DOCKER_DEVBOX_DISABLE_DDB`: Keep the ddb binary already available instead of downloading one. The installer fails
+    if no ddb is found in `~/.docker-devbox/bin` nor in `PATH`. Useful to run the installer against a locally built ddb.
+    Only the download is skipped: `core.github_repository` is still kept aligned as described below.
   - `DOCKER_DEVBOX_MINIMAL`: Creates the required folder, download the `ddb` binary and create reverse-proxy network only.
   Does not install other tools like smartcd, cfssl, portainer, etc.
   - `DOCKER_DEVBOX_CI`: Equivalent to `DOCKER_DEVBOX_MINIMAL` and `DOCKER_DEVBOX_DISABLE_OPTIONAL_DEPENDENCIES`,
     recommanded for CI.
 - Specific version installs:
   - `DOCKER_DEVBOX_DDB_VERSION`: Install a specific version of ddb (ex: `v2.0.1`). When unset, gets the latest version
+  - `DOCKER_DEVBOX_DDB_URL`: Download the ddb binary from this url instead of a github release, which takes precedence
+    over `DOCKER_DEVBOX_DDB_VERSION` and `DOCKER_DEVBOX_DDB_REPOSITORY`. Any protocol supported by curl works, including
+    `file:///path/to/ddb` to install a local build.
   - `DOCKER_DEVBOX_DDB_REPOSITORY`: Github repository (`owner/name`) to download the ddb release from. Default is
     `inetum-orleans/docker-devbox-ddb`. The installer keeps `core.github_repository` in `~/.docker-devbox/ddb.yml`
     aligned with this value so `ddb self-update` uses the same repository, creating or updating that file as needed.
