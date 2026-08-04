@@ -4,6 +4,7 @@ DOCKER_DEVBOX_HOME="${DOCKER_DEVBOX_HOME:-$HOME/.docker-devbox}"
 DOCKER_DEVBOX_BIN="${DOCKER_DEVBOX_HOME}/bin"
 DOCKER_DEVBOX_DOT_BIN="${DOCKER_DEVBOX_HOME}/.bin"
 DOCKER_DEVBOX_SRC="${DOCKER_DEVBOX_HOME}/.src"
+DOCKER_DEVBOX_KEPT="${DOCKER_DEVBOX_HOME}/.kept"
 export DOCKER_DEVBOX_REVERSE_PROXY_NETWORK="${DOCKER_DEVBOX_REVERSE_PROXY_NETWORK:-reverse-proxy}"
 DOCKER_DEVBOX_DDB_ASSET_NAME="${DOCKER_DEVBOX_DDB_ASSET_NAME:-ddb-linux}"
 _DDB_DEFAULT_REPOSITORY="inetum-orleans/docker-devbox-ddb"
@@ -171,6 +172,60 @@ EOF
   fi
 }
 
+# Paths of a service directory that hold local configuration or state, and are worth surviving a reinstallation.
+_service_kept_paths() {
+  local SERVICE="$1"
+
+  echo "ddb.local.yml"
+  echo "ddb.local.yaml"
+
+  if [[ "$SERVICE" == "traefik" ]]; then
+    echo "acme.json"
+  fi
+
+  # Those certificates are signed by the certificate authority, and are meaningless once it is reissued.
+  if [[ -z "${DOCKER_DEVBOX_RESET_VOLUMES}" ]]; then
+    echo ".certs"
+
+    if [[ "$SERVICE" == "traefik" ]]; then
+      echo "config"
+    fi
+  fi
+}
+
+_keep_service_files() {
+  local SERVICE="$1"
+  local TARGET="$DOCKER_DEVBOX_HOME/$SERVICE"
+  local KEPT="$DOCKER_DEVBOX_KEPT/$SERVICE"
+  local KEPT_PATH
+
+  rm -rf "$KEPT" &>> "$_LOG"
+
+  while read -r KEPT_PATH; do
+    if [[ ! -e "$TARGET/$KEPT_PATH" ]]; then
+      continue
+    fi
+
+    echo "Keep $SERVICE/$KEPT_PATH" 2>&1 |& tee -a "$_LOG"
+    mkdir -p "$KEPT/$(dirname "$KEPT_PATH")" &>> "$_LOG"
+    cp -a "$TARGET/$KEPT_PATH" "$KEPT/$KEPT_PATH" &>> "$_LOG"
+  done < <(_service_kept_paths "$SERVICE")
+}
+
+_restore_service_files() {
+  local SERVICE="$1"
+  local TARGET="$DOCKER_DEVBOX_HOME/$SERVICE"
+  local KEPT="$DOCKER_DEVBOX_KEPT/$SERVICE"
+
+  if [[ ! -d "$KEPT" ]]; then
+    return 0
+  fi
+
+  cp -a "$KEPT/." "$TARGET/" &>> "$_LOG"
+  rm -rf "$KEPT" &>> "$_LOG"
+  rmdir "$DOCKER_DEVBOX_KEPT" &> /dev/null || true
+}
+
 _uninstall_service() {
   local SERVICE="$1"
   local TARGET="$DOCKER_DEVBOX_HOME/$SERVICE"
@@ -178,6 +233,8 @@ _uninstall_service() {
   if [[ ! -d "$TARGET" ]]; then
     return 0
   fi
+
+  _keep_service_files "$SERVICE"
 
   echo "Stop $SERVICE" 2>&1 |& tee -a "$_LOG"
   cd "$TARGET" &>> "$_LOG"
@@ -206,6 +263,7 @@ _copy_service() {
 
   mkdir -p "$TARGET" &>> "$_LOG"
   cp -a "$DOCKER_DEVBOX_SOURCES/services/$SERVICE/." "$TARGET/" &>> "$_LOG"
+  _restore_service_files "$SERVICE"
 }
 
 _install_package_if_missing "git"

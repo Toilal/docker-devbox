@@ -310,12 +310,11 @@ jobs:
           done
 
   reinstall:
-    name: Reinstallation keeps the certificate authority
+    name: Reinstallation preserves state
     runs-on: ubuntu-latest
     env:
       DOCKER_DEVBOX_CURL_OPTS_GITHUB_API: -u x-access-token:${{ github.token }}
       DOCKER_DEVBOX_DISABLE_PORTAINER: 1
-      DOCKER_DEVBOX_DISABLE_REVERSE_PROXY: 1
       DOCKER_DEVBOX_DISABLE_SMARTCD: 1
     steps:
       - uses: actions/checkout@v5
@@ -338,6 +337,19 @@ jobs:
           echo "INITIAL_CA=$initial" >> "$GITHUB_ENV"
           echo "certificate authority: $initial"
 
+      - name: Seed local configuration and state
+        run: |
+          cd "$HOME/.docker-devbox"
+          echo "project: {acme_email: someone@example.com}" > traefik/ddb.local.yml
+          echo '{"letsencrypt": {"Certificates": ["kept"]}}' > traefik/acme.json
+          echo 'tls: {certificates: []}' > traefik/config/sample.test.ssl.toml
+          mkdir -p traefik/.certs
+          echo kept > traefik/.certs/sample.test.crt
+          echo "jsonnet: {docker: {expose: {port_prefix: 99}}}" > cfssl/ddb.local.yaml
+
+          # a local edit of a versioned file must be overwritten by the reinstallation
+          echo "# local edit" >> traefik/ddb.yml
+
       - name: Check a reinstallation keeps it
         run: |
           ./installer
@@ -353,7 +365,43 @@ jobs:
             exit 1
           fi
 
-      - name: Check DOCKER_DEVBOX_RESET_VOLUMES drops it
+      - name: Check a reinstallation keeps local configuration and state
+        run: |
+          cd "$HOME/.docker-devbox"
+
+          assert_kept() {
+            if [[ ! -e "$1" ]]; then
+              echo "missing: $1"
+              ls -la "$(dirname "$1")" || true
+              exit 1
+            fi
+            if ! grep -q "$2" "$1"; then
+              echo "content lost in $1"
+              cat "$1"
+              exit 1
+            fi
+            echo "kept: $1"
+          }
+
+          assert_kept traefik/ddb.local.yml someone@example.com
+          assert_kept traefik/acme.json '"kept"'
+          assert_kept traefik/config/sample.test.ssl.toml certificates
+          assert_kept traefik/.certs/sample.test.crt kept
+          assert_kept cfssl/ddb.local.yaml "port_prefix: 99"
+
+          # versioned files come back from the repository, and nothing is left behind
+          if grep -q "# local edit" traefik/ddb.yml; then
+            echo "versioned files must be refreshed from the repository"
+            exit 1
+          fi
+
+          if [[ -e .kept ]]; then
+            echo "the directory holding kept files must be cleaned up"
+            find .kept
+            exit 1
+          fi
+
+      - name: Check DOCKER_DEVBOX_RESET_VOLUMES drops the authority and its certificates
         run: |
           DOCKER_DEVBOX_RESET_VOLUMES=1 ./installer
 
@@ -367,6 +415,31 @@ jobs:
             echo "DOCKER_DEVBOX_RESET_VOLUMES must issue a new certificate authority"
             exit 1
           fi
+
+          cd "$HOME/.docker-devbox"
+
+          assert_kept() {
+            if [[ ! -e "$1" ]] || ! grep -q "$2" "$1"; then
+              echo "$1 should have been kept"
+              exit 1
+            fi
+            echo "kept: $1"
+          }
+
+          assert_dropped() {
+            if [[ -e "$1" ]]; then
+              echo "$1 should have been dropped, it is signed by the previous authority"
+              exit 1
+            fi
+            echo "dropped: $1"
+          }
+
+          # local configuration still survives, certificates signed by the previous authority do not
+          assert_kept traefik/ddb.local.yml someone@example.com
+          assert_kept traefik/acme.json '"kept"'
+          assert_kept cfssl/ddb.local.yaml "port_prefix: 99"
+          assert_dropped traefik/config/sample.test.ssl.toml
+          assert_dropped traefik/.certs/sample.test.crt
 
       - name: Dump logs
         if: failure()
