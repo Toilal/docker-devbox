@@ -5,10 +5,14 @@ CFSSL docker-compose configuration to use with docker-devbox.
 
 It allows to generate certificates from a 3 level chain (Root CA, Intermediate CA, End-User CA)
 
+The image is built from `.docker/cfssl`, which compiles [CFSSL](https://github.com/cloudflare/cfssl) at the version
+pinned by the `CFSSL_VERSION` build argument and initializes the certificate authority on first start. Its entrypoint
+and certificate authority bootstrap scripts are Apache 2.0, Copyright LasLabs Inc., as stated in their headers.
+
 Installation
 ------------
 ```
-docker-compose up
+docker compose up --build
 ```
 
 Generate a wildcard certificate for a domain name
