@@ -84,7 +84,7 @@ put back afterwards:
 | `traefik/config` | per domain TLS configuration written by `ddb configure` |
 | `.certs` | certificates of the service own domain |
 
-The last two are dropped when `DOCKER_DEVBOX_RESET_VOLUMES` is set, as a new certificate authority makes them useless.
+The last two are dropped when `DOCKER_DEVBOX_RESET` is set, as a new certificate authority makes them useless.
 Docker volumes, holding the certificate authority and the portainer data, are kept as well. Anything else in a service
 directory is replaced by the repository content, so local edits of the versioned files do not survive.
 
@@ -242,10 +242,10 @@ Environment variables available for installer script:
   - `DOCKER_DEVBOX_CURL_OPTS_GITHUB_API`: Additional curl options to pass when accessing github api. You can set this
     variable to `-u <username:token>` using a Github Personnal Access Token if you encounter 403 errors due to rate
     limiting.
-  - `DOCKER_DEVBOX_RESET_VOLUMES`: Also remove the docker volumes of the services when reinstalling them, along with
-    `~/.docker-devbox/certs` and the certificates of the service directories. This issues a brand new certificate
-    authority, which then has to be trusted again on the clients, and makes every already generated project certificate
-    useless. Without it, reinstalling keeps the certificate authority and the portainer data.
+  - `DOCKER_DEVBOX_RESET`: Reinstall the services from scratch instead of preserving their state: their docker volumes,
+    `~/.docker-devbox/certs` and the certificates of the service directories are removed. This issues a brand new
+    certificate authority, which then has to be trusted again on the clients, and makes every already generated project
+    certificate useless. Local configuration files are still preserved.
   - `DOCKER_DEVBOX_SKIP_DOCKER_CHECKS`: Force installation even if `docker` binary is unavailable.
   - `DOCKER_DEVBOX_REVERSE_PROXY_NETWORK`: Name of the reverse proxy network. Default is `reverse-proxy`.
   - `DOCKER_DEVBOX_ALLOW_ROOT`: Allow the script to be run as root. This is not recommended.
