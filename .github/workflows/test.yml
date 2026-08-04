@@ -33,6 +33,56 @@ jobs:
           shellcheck --severity=error installer upgrade uninstaller \
             services/cfssl/.docker/cfssl/docker-entrypoint.sh services/cfssl/.docker/cfssl/bin/*
 
+  ddb-installation:
+    name: ddb installation options
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check ddb can come from a url, or not be downloaded at all
+        run: |
+          stub="$RUNNER_TEMP/stub"
+          mkdir -p "$stub"
+          printf '#!/usr/bin/env bash\nexit 0\n' > "$stub/docker"
+          chmod +x "$stub/docker"
+
+          home="$RUNNER_TEMP/devbox"
+          printf '#!/usr/bin/env bash\necho custom-ddb\n' > "$RUNNER_TEMP/custom-ddb"
+
+          install() {
+            env -i PATH="$stub:/usr/bin:/bin" HOME="$RUNNER_TEMP/fakehome" DOCKER_DEVBOX_HOME="$home" \
+              DOCKER_DEVBOX_MINIMAL=1 DOCKER_DEVBOX_DISABLE_OPTIONAL_DEPENDENCIES=1 \
+              DOCKER_DEVBOX_SKIP_DOCKER_CHECKS=1 "$@" bash ./installer
+          }
+
+          # a custom url is downloaded as is, which file:// makes verifiable without any network
+          rm -rf "$home"
+          install DOCKER_DEVBOX_DDB_URL="file://$RUNNER_TEMP/custom-ddb"
+          cmp "$RUNNER_TEMP/custom-ddb" "$home/bin/ddb"
+          test -x "$home/bin/ddb"
+
+          # a disabled download leaves the installed binary untouched
+          printf '#!/usr/bin/env bash\necho preexisting-ddb\n' > "$home/bin/ddb"
+          chmod +x "$home/bin/ddb"
+          checksum="$(sha256sum < "$home/bin/ddb")"
+          install DOCKER_DEVBOX_DISABLE_DDB=1
+          test "$(sha256sum < "$home/bin/ddb")" = "$checksum"
+
+          # disabling the download without any available binary must fail explicitly
+          rm -rf "$home"
+          if install DOCKER_DEVBOX_DISABLE_DDB=1; then
+            echo "the installer should have failed without any ddb binary"
+            exit 1
+          fi
+
+          # an unreachable url must fail instead of leaving a broken binary behind
+          rm -rf "$home"
+          if install DOCKER_DEVBOX_DDB_URL="file://$RUNNER_TEMP/missing-ddb"; then
+            echo "the installer should have failed on an unreachable url"
+            exit 1
+          fi
+          test ! -e "$home/bin/ddb"
+
   ddb-repository:
     name: ddb repository configuration
     runs-on: ubuntu-latest
