@@ -6,6 +6,8 @@ DOCKER_DEVBOX_DOT_BIN="${DOCKER_DEVBOX_HOME}/.bin"
 DOCKER_DEVBOX_SRC="${DOCKER_DEVBOX_HOME}/.src"
 export DOCKER_DEVBOX_REVERSE_PROXY_NETWORK="${DOCKER_DEVBOX_REVERSE_PROXY_NETWORK:-reverse-proxy}"
 DOCKER_DEVBOX_DDB_ASSET_NAME="${DOCKER_DEVBOX_DDB_ASSET_NAME:-ddb-linux}"
+_DDB_DEFAULT_REPOSITORY="inetum-orleans/docker-devbox-ddb"
+DOCKER_DEVBOX_DDB_REPOSITORY="${DOCKER_DEVBOX_DDB_REPOSITORY:-$_DDB_DEFAULT_REPOSITORY}"
 DOCKER_DEVBOX_REPOSITORY="${DOCKER_DEVBOX_REPOSITORY:-https://github.com/inetum-orleans/docker-devbox.git}"
 DOCKER_DEVBOX_BRANCH="${DOCKER_DEVBOX_BRANCH:-master}"
 
@@ -184,11 +186,11 @@ fi
 export PATH="$DOCKER_DEVBOX_BIN:$PATH"
 
 if [[ -n "${DOCKER_DEVBOX_DDB_VERSION}" ]]; then
-  echo "Downloading ddb version ${DOCKER_DEVBOX_DDB_VERSION}" 2>&1 |& tee -a "$_LOG"
-  DOCKER_DEVBOX_BIN_URL="https://github.com/inetum-orleans/docker-devbox-ddb/releases/download/${DOCKER_DEVBOX_DDB_VERSION}/${DOCKER_DEVBOX_DDB_ASSET_NAME}"
+  echo "Downloading ddb version ${DOCKER_DEVBOX_DDB_VERSION} from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
+  DOCKER_DEVBOX_BIN_URL="https://github.com/${DOCKER_DEVBOX_DDB_REPOSITORY}/releases/download/${DOCKER_DEVBOX_DDB_VERSION}/${DOCKER_DEVBOX_DDB_ASSET_NAME}"
 else
-  echo "Downloading ddb latest release" 2>&1 |& tee -a "$_LOG"
-  DOCKER_DEVBOX_BIN_URL=$(curl -fsSL $DOCKER_DEVBOX_CURL_OPTS_GITHUB_API https://api.github.com/repos/inetum-orleans/docker-devbox-ddb/releases/latest \
+  echo "Downloading ddb latest release from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
+  DOCKER_DEVBOX_BIN_URL=$(curl -fsSL $DOCKER_DEVBOX_CURL_OPTS_GITHUB_API "https://api.github.com/repos/${DOCKER_DEVBOX_DDB_REPOSITORY}/releases/latest" \
   | grep "browser_download_url.*/$DOCKER_DEVBOX_DDB_ASSET_NAME\"" \
   | cut -d : -f 2,3 \
   | tr -d \")
@@ -197,21 +199,39 @@ else
     # Github API may fail, most commonly because of unauthenticated rate limit.
     # Use git to retrieve latest release tag and build url manually.
     DOCKER_DEVBOX_LATEST_RELEASE=$(git -c 'versionsort.suffix=-' \
-        ls-remote --exit-code --refs --sort='version:refname' --tags https://github.com/inetum-orleans/docker-devbox-ddb 'v*.*.*' \
+        ls-remote --exit-code --refs --sort='version:refname' --tags "https://github.com/${DOCKER_DEVBOX_DDB_REPOSITORY}" 'v*.*.*' \
         | tail --lines=1 \
         | cut --delimiter='/' --fields=3)
 
     if [[ -z "${DOCKER_DEVBOX_LATEST_RELEASE}" ]]; then
-        echo "Can't find docker-devbox-ddb last release." 2>&1 | tee -a "$_LOG"
+        echo "Can't find ${DOCKER_DEVBOX_DDB_REPOSITORY} last release." 2>&1 | tee -a "$_LOG"
         exit 1
     fi
 
-    DOCKER_DEVBOX_BIN_URL="https://github.com/inetum-orleans/docker-devbox-ddb/releases/download/${DOCKER_DEVBOX_LATEST_RELEASE}/${DOCKER_DEVBOX_DDB_ASSET_NAME}"
+    DOCKER_DEVBOX_BIN_URL="https://github.com/${DOCKER_DEVBOX_DDB_REPOSITORY}/releases/download/${DOCKER_DEVBOX_LATEST_RELEASE}/${DOCKER_DEVBOX_DDB_ASSET_NAME}"
   fi
 fi
 
 curl -fsSL -o "$DOCKER_DEVBOX_BIN/ddb" $DOCKER_DEVBOX_BIN_URL
 chmod +x "$DOCKER_DEVBOX_BIN/ddb"
+
+# ddb self-update reads the repository from its own configuration, keep it aligned with the installed binary.
+if [[ "$DOCKER_DEVBOX_DDB_REPOSITORY" != "$_DDB_DEFAULT_REPOSITORY" ]]; then
+  _DDB_CONFIG="${DOCKER_DEVBOX_HOME}/ddb.yml"
+  if [[ -e "${DOCKER_DEVBOX_HOME}/ddb.yaml" ]]; then
+    _DDB_CONFIG="${DOCKER_DEVBOX_HOME}/ddb.yaml"
+  fi
+
+  if [[ ! -e "$_DDB_CONFIG" ]]; then
+    echo "Configure ddb to self-update from ${DOCKER_DEVBOX_DDB_REPOSITORY}" 2>&1 |& tee -a "$_LOG"
+    cat << EOF > "$_DDB_CONFIG"
+core:
+  github_repository: $DOCKER_DEVBOX_DDB_REPOSITORY
+EOF
+  elif ! grep -q "github_repository" "$_DDB_CONFIG"; then
+    echo "Set core.github_repository to ${DOCKER_DEVBOX_DDB_REPOSITORY} in $_DDB_CONFIG for ddb self-update to use the same repository." 2>&1 | tee -a "$_LOG"
+  fi
+fi
 
 if [[ -z "${DOCKER_DEVBOX_DISABLE_OPTIONAL_DEPENDENCIES}" ]]; then
     _MKCERT_VERSION=$(curl -fsSL $DOCKER_DEVBOX_CURL_OPTS_GITHUB_API https://api.github.com/repos/FiloSottile/mkcert/releases/latest | grep 'tag_name' | cut -d\" -f4)
