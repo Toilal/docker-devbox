@@ -36,6 +36,6 @@ for SERVICE in "${SERVICES[@]}"; do
         cp -a "${DOCKER_DEVBOX_SOURCES}/services/${SERVICE}/." "${DOCKER_DEVBOX_HOME}/${SERVICE}/" &&\
         cd "${DOCKER_DEVBOX_HOME}/${SERVICE}" &&\
         ddb configure &&\
-        docker compose up -d --pull always
+        docker compose up -d --build --pull always
     fi
 done
