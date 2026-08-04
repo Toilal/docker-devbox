@@ -56,7 +56,7 @@ VirtualBox VM based on Ubuntu Server.
 # Install or Update
 
 ```
-curl -L https://github.com/inetum-orleans/docker-devbox/raw/master/installer | bash
+curl -L https://github.com/Toilal/docker-devbox/raw/master/installer | bash
 ```
 
 This will install everything required for Docker Devbox, but docker, docker compose and bash should be installed
@@ -69,6 +69,10 @@ so those ports should be available.
 Port `tcp/7780` should also be available for CFSSL container (local certificate authority service).
 
 *Installation script may ask for sudo password to install some dependencies, like curl, git and make.*
+
+Traefik, CFSSL and Portainer configurations live in the [`services`](services) directory of this repository. The
+installer copies them into `~/.docker-devbox/<service>`, retrieving them from the local checkout when run from one, or
+cloning this repository into `~/.docker-devbox/.src` otherwise.
 
 ## Development domain name configuration (`.test`)
 
@@ -200,10 +204,15 @@ Environment variables available for installer script:
     recommanded for CI.
 - Specific version installs:
   - `DOCKER_DEVBOX_DDB_VERSION`: Install a specific version of ddb (ex: `v2.0.1`). When unset, gets the latest version
+  - `DOCKER_DEVBOX_DDB_REPOSITORY`: Github repository (`owner/name`) to download the ddb release from. Default is
+    `inetum-orleans/docker-devbox-ddb`. The installer keeps `core.github_repository` in `~/.docker-devbox/ddb.yml`
+    aligned with this value so `ddb self-update` uses the same repository, creating or updating that file as needed.
+    A `core` section written in flow style (`core: {...}`) can't be updated automatically and has to be edited manually.
   - `DOCKER_DEVBOX_SMARTCD_BRANCH`: Use a specific [smartcd (inetum fork)](https://github.com/inetum-orleans/smartcd) branch.
-  - `DOCKER_DEVBOX_CFSSL_BRANCH`: Use a specific [docker-devbox-cfssl](https://github.com/inetum-orleans/docker-devbox-cfssl) branch.
-  - `DOCKER_DEVBOX_PORTAINER_BRANCH`: Use a specific [docker-devbox-portainer](https://github.com/inetum-orleans/docker-devbox-portainer) branch.
-  - `DOCKER_DEVBOX_TRAEFIK_BRANCH`: Use a specific [docker-devbox-traefik](https://github.com/inetum-orleans/docker-devbox-traefik) branch.
+  - `DOCKER_DEVBOX_REPOSITORY`: Repository to retrieve services (traefik, cfssl, portainer) from. Default is
+    `https://github.com/Toilal/docker-devbox.git`.
+  - `DOCKER_DEVBOX_BRANCH`: Branch of `DOCKER_DEVBOX_REPOSITORY` to retrieve services from. Default is `master`.
+    Ignored when the installer runs from a local checkout, as services are then taken from the checkout itself.
   - `DOCKER_DEVBOX_DDB_ASSET_NAME`: Custom [ddb release](https://github.com/inetum-orleans/docker-devbox-ddb/releases)
     asset name to install ddb. It was set to "ddb-linux-older-glibc" to install ddb on
     older linux distributions, like Ubuntu 16.04. This asset is not compiled anymore, but the option sticked.
@@ -220,7 +229,7 @@ Environment variables available for installer script:
 Environment variables can be set right before bash invocation in the installer one-liner.
 
 ```bash
-curl -L https://github.com/inetum-orleans/docker-devbox/raw/master/installer | \
+curl -L https://github.com/Toilal/docker-devbox/raw/master/installer | \
 DOCKER_DEVBOX_CI=1 \
 bash
 ```

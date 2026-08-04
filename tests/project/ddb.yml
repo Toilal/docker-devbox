@@ -1,0 +1,10 @@
+core:
+  project:
+    name: devbox-test
+  domain:
+    sub: devbox-test
+    ext: test
+jsonnet:
+  docker:
+    service:
+      restart: "no"
