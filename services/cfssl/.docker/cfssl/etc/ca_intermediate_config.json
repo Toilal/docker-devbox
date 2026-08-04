@@ -3,12 +3,12 @@
     "profiles": {
       "CA": {
         "usages": ["cert sign"],
-        "expiry": "8760h"
+        "expiry": "201480h"
       }
     },
     "default": {
       "usages": ["digital signature"],
-      "expiry": "8760h"
+      "expiry": "175200h"
     }
   }
 }
