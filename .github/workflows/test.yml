@@ -19,14 +19,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check bash syntax
+      - name: Check shell syntax
         run: |
           for script in installer upgrade uninstaller services/traefik/.bash_enter.d/*; do
             bash -n "$script"
           done
+          for script in services/cfssl/.docker/cfssl/docker-entrypoint.sh services/cfssl/.docker/cfssl/bin/*; do
+            sh -n "$script"
+          done
 
       - name: Shellcheck
-        run: shellcheck --severity=error installer upgrade uninstaller
+        run: |
+          shellcheck --severity=error installer upgrade uninstaller \
+            services/cfssl/.docker/cfssl/docker-entrypoint.sh services/cfssl/.docker/cfssl/bin/*
 
   ddb-repository:
     name: ddb repository configuration
@@ -208,6 +213,12 @@ jobs:
           done
           echo "cfssl answered with status $code: $(curl -s http://localhost:7780/api/v1/cfssl/health || true)"
           [[ "$code" != "000" ]]
+
+          # the image is built from this repository, so it must report the pinned version
+          version="$(grep -oP 'ARG CFSSL_VERSION=v?\K[0-9.]+' services/cfssl/.docker/cfssl/Dockerfile)"
+          cd "$HOME/.docker-devbox/cfssl"
+          docker compose exec -T intermediate cfssl version | grep -q "Version: $version"
+          echo "cfssl $version is running"
 
       - name: Upgrade services
         if: matrix.mode == 'full'
