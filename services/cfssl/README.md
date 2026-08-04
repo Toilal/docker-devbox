@@ -34,14 +34,8 @@ made after 2027 crosses 2050 anyway, and current TLS stacks read `GeneralizedTim
 
 Changing these values only affects certificates issued afterwards. `ddb configure` regenerates a project certificate
 when it is missing, never when it expired or when the configuration changed, and the certificate authority itself lives
-in a docker volume. To reissue everything with new durations:
-
-```
-cd ~/.docker-devbox/cfssl
-docker compose down -v          # drops the certificate authority volumes
-docker compose up --build -d
-rm -rf ~/.docker-devbox/certs/* ~/.docker-devbox/traefik/config/*.ssl.toml
-```
+in a docker volume that survives reinstallations. To issue a brand new certificate authority with the current durations,
+reinstall docker-devbox with `DOCKER_DEVBOX_RESET_VOLUMES=1`.
 
 Then, in each project, remove the `.certs` directory and run `ddb configure` again. The new root certificate has to be
 installed in the client trust store, as described in the docker-devbox README.

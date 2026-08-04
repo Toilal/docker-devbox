@@ -181,7 +181,14 @@ _uninstall_service() {
 
   echo "Stop $SERVICE" 2>&1 |& tee -a "$_LOG"
   cd "$TARGET" &>> "$_LOG"
-  docker compose down --remove-orphans --volumes &>> "$_LOG"
+
+  if [[ -n "${DOCKER_DEVBOX_RESET_VOLUMES}" ]]; then
+    echo "Remove $SERVICE volumes" 2>&1 |& tee -a "$_LOG"
+    docker compose down --remove-orphans --volumes &>> "$_LOG"
+  else
+    docker compose down --remove-orphans &>> "$_LOG"
+  fi
+
   cd "$HOME" &>> "$_LOG"
   rm -rf "$TARGET" &>> "$_LOG"
 }
@@ -359,7 +366,10 @@ fi
 # Traefik
 if [[ -d "$DOCKER_DEVBOX_HOME/traefik" ]]; then
     _uninstall_service traefik
-    rm -rf "$DOCKER_DEVBOX_HOME"/certs &>> "$_LOG"
+
+    if [[ -n "${DOCKER_DEVBOX_RESET_VOLUMES}" ]]; then
+      rm -rf "$DOCKER_DEVBOX_HOME"/certs &>> "$_LOG"
+    fi
 fi
 
 if [[ -n "${DOCKER_DEVBOX_TRAEFIK_ENABLED}" ]]; then

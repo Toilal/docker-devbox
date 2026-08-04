@@ -309,6 +309,73 @@ jobs:
             echo "::endgroup::"
           done
 
+  reinstall:
+    name: Reinstallation keeps the certificate authority
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_DEVBOX_CURL_OPTS_GITHUB_API: -u x-access-token:${{ github.token }}
+      DOCKER_DEVBOX_DISABLE_PORTAINER: 1
+      DOCKER_DEVBOX_DISABLE_REVERSE_PROXY: 1
+      DOCKER_DEVBOX_DISABLE_SMARTCD: 1
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install
+        run: |
+          ./installer
+          echo "$HOME/.docker-devbox/bin" >> "$GITHUB_PATH"
+
+      - name: Read the certificate authority fingerprint
+        run: |
+          cd "$HOME/.docker-devbox/cfssl"
+          fingerprint() {
+            docker compose exec -T intermediate cat /etc/cfssl/ca.pem \
+              | openssl x509 -noout -fingerprint -sha256 | cut -d= -f2
+          }
+
+          initial="$(fingerprint)"
+          test -n "$initial"
+          echo "INITIAL_CA=$initial" >> "$GITHUB_ENV"
+          echo "certificate authority: $initial"
+
+      - name: Check a reinstallation keeps it
+        run: |
+          ./installer
+
+          cd "$HOME/.docker-devbox/cfssl"
+          current="$(docker compose exec -T intermediate cat /etc/cfssl/ca.pem \
+            | openssl x509 -noout -fingerprint -sha256 | cut -d= -f2)"
+          test -n "$current"
+          echo "certificate authority: $current"
+
+          if [[ "$current" != "$INITIAL_CA" ]]; then
+            echo "the certificate authority must survive a reinstallation"
+            exit 1
+          fi
+
+      - name: Check DOCKER_DEVBOX_RESET_VOLUMES drops it
+        run: |
+          DOCKER_DEVBOX_RESET_VOLUMES=1 ./installer
+
+          cd "$HOME/.docker-devbox/cfssl"
+          current="$(docker compose exec -T intermediate cat /etc/cfssl/ca.pem \
+            | openssl x509 -noout -fingerprint -sha256 | cut -d= -f2)"
+          test -n "$current"
+          echo "certificate authority: $current"
+
+          if [[ "$current" == "$INITIAL_CA" ]]; then
+            echo "DOCKER_DEVBOX_RESET_VOLUMES must issue a new certificate authority"
+            exit 1
+          fi
+
+      - name: Dump logs
+        if: failure()
+        run: |
+          cat "$HOME/.docker-devbox/docker-devbox-installer.log" || true
+          docker ps -a || true
+          docker volume ls || true
+          (cd "$HOME/.docker-devbox/cfssl" && docker compose logs --tail 50) || true
+
   certs:
     name: Certificates generation
     runs-on: ubuntu-latest
