@@ -3,8 +3,11 @@
 DOCKER_DEVBOX_HOME="${DOCKER_DEVBOX_HOME:-$HOME/.docker-devbox}"
 DOCKER_DEVBOX_BIN="${DOCKER_DEVBOX_HOME}/bin"
 DOCKER_DEVBOX_DOT_BIN="${DOCKER_DEVBOX_HOME}/.bin"
+DOCKER_DEVBOX_SRC="${DOCKER_DEVBOX_HOME}/.src"
 export DOCKER_DEVBOX_REVERSE_PROXY_NETWORK="${DOCKER_DEVBOX_REVERSE_PROXY_NETWORK:-reverse-proxy}"
 DOCKER_DEVBOX_DDB_ASSET_NAME="${DOCKER_DEVBOX_DDB_ASSET_NAME:-ddb-linux}"
+DOCKER_DEVBOX_REPOSITORY="${DOCKER_DEVBOX_REPOSITORY:-https://github.com/inetum-orleans/docker-devbox.git}"
+DOCKER_DEVBOX_BRANCH="${DOCKER_DEVBOX_BRANCH:-master}"
 
 if [[ -n "${DOCKER_DEVBOX_CI}" ]]; then
   DOCKER_DEVBOX_MINIMAL=1
@@ -13,9 +16,9 @@ fi
 
 if [[ -z "${DOCKER_DEVBOX_MINIMAL}" ]]; then
   DOCKER_DEVBOX_SMARTCD_BRANCH="${DOCKER_DEVBOX_SMARTCD_BRANCH:-master}"
-  DOCKER_DEVBOX_CFSSL_BRANCH="${DOCKER_DEVBOX_CFSSL_BRANCH:-master}"
-  DOCKER_DEVBOX_PORTAINER_BRANCH="${DOCKER_DEVBOX_PORTAINER_BRANCH:-master}"
-  DOCKER_DEVBOX_TRAEFIK_BRANCH="${DOCKER_DEVBOX_TRAEFIK_BRANCH:-master}"
+  DOCKER_DEVBOX_CFSSL_ENABLED=1
+  DOCKER_DEVBOX_PORTAINER_ENABLED=1
+  DOCKER_DEVBOX_TRAEFIK_ENABLED=1
 fi
 
 if [[ -n "${DOCKER_DEVBOX_DISABLE_SMARTCD}" ]]; then
@@ -23,15 +26,23 @@ if [[ -n "${DOCKER_DEVBOX_DISABLE_SMARTCD}" ]]; then
 fi
 
 if [[ -n "${DOCKER_DEVBOX_DISABLE_CFSSL}" ]]; then
-  DOCKER_DEVBOX_CFSSL_BRANCH=""
+  DOCKER_DEVBOX_CFSSL_ENABLED=""
 fi
 
 if [[ -n "${DOCKER_DEVBOX_DISABLE_PORTAINER}" ]]; then
-  DOCKER_DEVBOX_PORTAINER_BRANCH=""
+  DOCKER_DEVBOX_PORTAINER_ENABLED=""
 fi
 
 if [[ -n "${DOCKER_DEVBOX_DISABLE_REVERSE_PROXY}" ]]; then
-  DOCKER_DEVBOX_TRAEFIK_BRANCH=""
+  DOCKER_DEVBOX_TRAEFIK_ENABLED=""
+fi
+
+# Services are shipped in this repository. When the installer runs from a checkout, use it as is,
+# otherwise clone the repository into a cache directory.
+if [[ -f "${BASH_SOURCE[0]}" ]] && [[ -d "$(dirname "${BASH_SOURCE[0]}")/services" ]]; then
+  DOCKER_DEVBOX_SOURCES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+  DOCKER_DEVBOX_SOURCES=""
 fi
 
 mkdir -p "${DOCKER_DEVBOX_HOME}"
@@ -91,6 +102,51 @@ _install_package_if_missing() {
     echo "Install $PACKAGE" 2>&1 | tee -a "$_LOG"
     $SUDO_EXE $PACKAGE_INSTALL_COMMAND $PACKAGE &>> "$_LOG"
   fi
+}
+
+_fetch_sources() {
+  if [[ -n "$DOCKER_DEVBOX_SOURCES" ]]; then
+    return 0
+  fi
+
+  echo "Download docker-devbox sources ($DOCKER_DEVBOX_BRANCH)" 2>&1 |& tee -a "$_LOG"
+  rm -rf "$DOCKER_DEVBOX_SRC" &>> "$_LOG"
+  if ! git clone --depth 1 -b "$DOCKER_DEVBOX_BRANCH" "$DOCKER_DEVBOX_REPOSITORY" "$DOCKER_DEVBOX_SRC" &>> "$_LOG"; then
+    echo "Can't clone $DOCKER_DEVBOX_REPOSITORY ($DOCKER_DEVBOX_BRANCH)." 2>&1 | tee -a "$_LOG"
+    exit 1
+  fi
+
+  DOCKER_DEVBOX_SOURCES="$DOCKER_DEVBOX_SRC"
+}
+
+_uninstall_service() {
+  local SERVICE="$1"
+  local TARGET="$DOCKER_DEVBOX_HOME/$SERVICE"
+
+  if [[ ! -d "$TARGET" ]]; then
+    return 0
+  fi
+
+  echo "Stop $SERVICE" 2>&1 |& tee -a "$_LOG"
+  cd "$TARGET" &>> "$_LOG"
+  docker compose down --remove-orphans --volumes &>> "$_LOG"
+  cd "$HOME" &>> "$_LOG"
+  rm -rf "$TARGET" &>> "$_LOG"
+}
+
+_copy_service() {
+  local SERVICE="$1"
+  local TARGET="$DOCKER_DEVBOX_HOME/$SERVICE"
+
+  _fetch_sources
+
+  if [[ ! -d "$DOCKER_DEVBOX_SOURCES/services/$SERVICE" ]]; then
+    echo "Service $SERVICE not found in $DOCKER_DEVBOX_SOURCES/services." 2>&1 | tee -a "$_LOG"
+    exit 1
+  fi
+
+  mkdir -p "$TARGET" &>> "$_LOG"
+  cp -a "$DOCKER_DEVBOX_SOURCES/services/$SERVICE/." "$TARGET/" &>> "$_LOG"
 }
 
 _install_package_if_missing "git"
@@ -231,19 +287,13 @@ fi
 
 # Traefik
 if [[ -d "$DOCKER_DEVBOX_HOME/traefik" ]]; then
-    echo "Traefik : removing existing traefik installation" &>> "$_LOG"
-    echo "Stop traefik" 2>&1 |& tee -a "$_LOG"
-    cd "$DOCKER_DEVBOX_HOME/traefik" &>> "$_LOG"
-    docker compose down --remove-orphans --volumes &>> "$_LOG"
-    cd $HOME &>> "$_LOG"
-    rm -rf "$DOCKER_DEVBOX_HOME"/traefik &>> "$_LOG"
+    _uninstall_service traefik
     rm -rf "$DOCKER_DEVBOX_HOME"/certs &>> "$_LOG"
 fi
 
-if [[ -n "${DOCKER_DEVBOX_TRAEFIK_BRANCH}" ]]; then
-
+if [[ -n "${DOCKER_DEVBOX_TRAEFIK_ENABLED}" ]]; then
     echo "Use traefik as reverse proxy" 2>&1 |& tee -a "$_LOG"
-    git clone -b ${DOCKER_DEVBOX_TRAEFIK_BRANCH} https://github.com/inetum-orleans/docker-devbox-traefik.git "$DOCKER_DEVBOX_HOME/traefik" &>> "$_LOG"
+    _copy_service traefik
     cd "${DOCKER_DEVBOX_HOME}"/traefik &>> "$_LOG"
     echo "Install traefik" 2>&1 |& tee -a "$_LOG"
     touch acme.json
@@ -258,45 +308,33 @@ else
 fi
 
 # CFSSL
-if [[ -d "$DOCKER_DEVBOX_HOME/cfssl" ]]; then
-    echo "CFSSL : removing existing cfssl installation" &>> "$_LOG"
-    echo "Stop CFSSL" 2>&1 |& tee -a "$_LOG"
-    cd "$DOCKER_DEVBOX_HOME/cfssl" &>> "$_LOG"
-    docker compose down --remove-orphans --volumes &>> "$_LOG"
-    cd $HOME &>> "$_LOG"
-    rm -rf "$DOCKER_DEVBOX_HOME"/cfssl &>> "$_LOG"
-fi
+_uninstall_service cfssl
 
-if [[ -n "${DOCKER_DEVBOX_CFSSL_BRANCH}" ]]; then
+if [[ -n "${DOCKER_DEVBOX_CFSSL_ENABLED}" ]]; then
     echo "Install CFSSL" 2>&1 |& tee -a "$_LOG"
-    git clone -b ${DOCKER_DEVBOX_CFSSL_BRANCH} https://github.com/inetum-orleans/docker-devbox-cfssl.git "$DOCKER_DEVBOX_HOME/cfssl" &>> "$_LOG"
+    _copy_service cfssl
     cd "${DOCKER_DEVBOX_HOME}"/cfssl &>> "$_LOG"
     ddb configure &>> "$_LOG"
     docker compose pull &>> "$_LOG"
     echo "Start CFSSL" 2>&1 |& tee -a "$_LOG"
     docker compose up --build -d &>> "$_LOG"
+    cd $HOME &>> "$_LOG"
 else
     echo "CFSSL is disabled" 2>&1 |& tee -a "$_LOG"
 fi
 
 # Portainer
-if [[ -d "$DOCKER_DEVBOX_HOME/portainer" ]]; then
-    echo "Portainer : removing existing portainer installation" &>> "$_LOG"
-    echo "Stop portainer" 2>&1 |& tee -a "$_LOG"
-    cd "$DOCKER_DEVBOX_HOME/portainer" &>> "$_LOG"
-    docker compose down --remove-orphans --volumes &>> "$_LOG"
-    cd $HOME &>> "$_LOG"
-    rm -rf "$DOCKER_DEVBOX_HOME"/portainer &>> "$_LOG"
-fi
+_uninstall_service portainer
 
-if [[ -n "${DOCKER_DEVBOX_PORTAINER_BRANCH}" ]]; then
+if [[ -n "${DOCKER_DEVBOX_PORTAINER_ENABLED}" ]]; then
     echo "Install portainer" 2>&1 |& tee -a "$_LOG"
-    git clone -b ${DOCKER_DEVBOX_PORTAINER_BRANCH} https://github.com/inetum-orleans/docker-devbox-portainer.git "$DOCKER_DEVBOX_HOME/portainer" &>> "$_LOG"
+    _copy_service portainer
     cd "${DOCKER_DEVBOX_HOME}"/portainer &>> "$_LOG"
     ddb configure &>> "$_LOG" || true
     docker compose pull &>> "$_LOG" || true
     echo "Start portainer" 2>&1 |& tee -a "$_LOG"
     docker compose up --build -d &>> "$_LOG"
+    cd $HOME &>> "$_LOG"
 else
     echo "Portainer is disabled" 2>&1 |& tee -a "$_LOG"
 fi
