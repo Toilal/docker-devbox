@@ -247,3 +247,87 @@ jobs:
             (cd "$HOME/.docker-devbox/$service" && docker compose logs --tail 50) || true
             echo "::endgroup::"
           done
+
+  certs:
+    name: Certificates generation
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_DEVBOX_CURL_OPTS_GITHUB_API: -u x-access-token:${{ github.token }}
+      DOCKER_DEVBOX_DISABLE_PORTAINER: 1
+      DOMAIN: devbox-test.test
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install
+        run: |
+          ./installer
+          echo "$HOME/.docker-devbox/bin" >> "$GITHUB_PATH"
+
+      - name: Configure the test project
+        run: |
+          project="$RUNNER_TEMP/project"
+          cp -a tests/project "$project"
+          echo "PROJECT=$project" >> "$GITHUB_ENV"
+          cd "$project"
+          ddb configure
+
+      - name: Check the certificate issued by cfssl
+        run: |
+          cd "$PROJECT"
+          test -f ".certs/$DOMAIN.crt"
+          test -f ".certs/$DOMAIN.key"
+
+          openssl x509 -in ".certs/$DOMAIN.crt" -noout -subject | grep -qE "CN *= *$DOMAIN"
+          openssl x509 -in ".certs/$DOMAIN.crt" -noout -ext subjectAltName | grep -q "DNS:$DOMAIN"
+          openssl x509 -in ".certs/$DOMAIN.crt" -noout -ext subjectAltName | grep -q "DNS:\*\.$DOMAIN"
+          openssl x509 -in ".certs/$DOMAIN.crt" -noout -checkend 0
+
+          # append_ca_certificate defaults to true, so the issuing CA is bundled with the certificate
+          test "$(grep -c 'BEGIN CERTIFICATE' ".certs/$DOMAIN.crt")" -ge 2
+
+          # the private key must match the certificate
+          diff <(openssl x509 -in ".certs/$DOMAIN.crt" -noout -pubkey) <(openssl pkey -in ".certs/$DOMAIN.key" -pubout)
+
+          openssl x509 -in ".certs/$DOMAIN.crt" -noout -subject -issuer -dates
+
+      - name: Check the certificate is installed in traefik
+        run: |
+          test -f "$HOME/.docker-devbox/certs/$DOMAIN.crt"
+          test -f "$HOME/.docker-devbox/certs/$DOMAIN.key"
+          cmp "$PROJECT/.certs/$DOMAIN.crt" "$HOME/.docker-devbox/certs/$DOMAIN.crt"
+          grep -q "$DOMAIN" "$HOME/.docker-devbox/traefik/config/$DOMAIN.ssl.toml"
+
+      - name: Check https access through traefik
+        run: |
+          cd "$HOME/.docker-devbox/cfssl"
+          docker compose cp intermediate:/etc/cfssl/ca.pem "$RUNNER_TEMP/ca.pem"
+
+          cd "$PROJECT"
+          docker compose up -d --wait || docker compose up -d
+
+          for _ in $(seq 30); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/ca.pem" \
+              --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" || true)"
+            [[ "$code" == "200" ]] && break
+            sleep 2
+          done
+
+          echo "https://$DOMAIN answered with status $code, certificate validated against the cfssl CA"
+          [[ "$code" == "200" ]]
+
+      - name: Dump logs
+        if: failure()
+        run: |
+          cat "$HOME/.docker-devbox/docker-devbox-installer.log" || true
+          docker ps -a || true
+          ls -la "$PROJECT/.certs" || true
+          cat "$HOME/.docker-devbox/traefik/config/$DOMAIN.ssl.toml" || true
+          echo | openssl s_client -connect 127.0.0.1:443 -servername "$DOMAIN" 2>&1 | head -30 || true
+          for service in traefik cfssl; do
+            echo "::group::$service"
+            (cd "$HOME/.docker-devbox/$service" && docker compose logs --tail 50) || true
+            echo "::endgroup::"
+          done
+          echo "::group::project"
+          (cd "$PROJECT" && docker compose logs --tail 50) || true
+          echo "::endgroup::"
